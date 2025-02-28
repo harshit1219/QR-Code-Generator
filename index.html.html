@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Scanner & Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f0f4f8;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        #video,
+        #canvas,
+        #scannedImage {
+            max-width: 100%;
+            border-radius: 8px;
+            margin: 0 auto;
+        }
+
+        .btn {
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #warningMessage {
+            color: #e53e3e;
+        }
+
+        #successMessage {
+            color: #48bb78;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4">
+        <div class="text-center my-8">
+            <h1 class="text-3xl font-bold text-gray-800">QR Code Scanner & Generator</h1>
+        </div>
+
+        <div class="card">
+            <div id="scanner" class="mb-4">
+                <video id="video" class="w-full max-w-md mx-auto rounded-lg" width="400" height="300"></video>
+                <canvas id="canvas" class="hidden w-full max-w-md mx-auto rounded-lg" width="400" height="300"></canvas>
+                <img id="scannedImage" class="hidden w-full max-w-md mx-auto rounded-lg" alt="Scanned QR Code">
+            </div>
+
+            <div id="result" class="text-center text-lg font-semibold mb-4"></div>
+
+            <div id="actions" class="flex justify-center space-x-4 mb-4">
+                <button id="scanButton" onclick="toggleScan()"
+                    class="btn bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">
+                    Start Scanning
+                </button>
+                <button id="copyButton" onclick="copyToClipboard()" 
+                    class="btn bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">
+                    Copy
+                </button>
+                <button id="searchButton" onclick="searchOnGoogle()" 
+                    class="btn bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg">
+                    Google Search
+                </button>
+            </div>
+
+
+            <div id="inputContainer" class="text-center mb-4">
+                <label for="inputText" class="block mb-2">Enter text or URL:</label>
+                <input type="text" id="inputText" onkeypress="handleKeyPress(event)"
+                    class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="generateQRCode()"
+                    class="btn mt-3 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg">
+                    Generate QR Code
+                </button>
+            </div>
+
+            <div id="qrcodeContainer" class="text-center">
+                <div id="qrcode" class="flex justify-center mb-4"></div>
+                <div id="qrcodeMessage" class="font-semibold mb-2"></div>
+                <div class="space-x-4">
+                    <button id="saveButton" onclick="saveQRCode()"
+                        class="btn bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg hidden">
+                        Save QR Code
+                    </button>
+                    <button id="shareButton" onclick="shareQRCode()"
+                        class="btn bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg hidden">
+                        Share QR Code
+                    </button>
+                </div>
+            </div>
+
+            <div id="warningMessage" class="text-center text-red-500 mt-2"></div>
+            <div id="successMessage" class="text-center text-green-500 mt-2"></div>
+        </div>
+    </div>
+
+    <footer class="text-center py-4 mt-8 text-gray-600">
+        <p>&copy; 2024 Rajnish Upadhyay | All Rights Reserved</p>
+    </footer>
+
+    <script>
+        var video = document.getElementById("video");
+        var canvas = document.getElementById("canvas");
+        var scannedImage = document.getElementById("scannedImage");
+        var resultContainer = document.getElementById("result");
+        var scanButton = document.getElementById("scanButton");
+        var copyButton = document.getElementById("copyButton");
+        var searchButton = document.getElementById("searchButton");
+
+        var qrCodeInstance = null;
+        var scanningActive = false;
+
+        function handleKeyPress(event) {
+            if (event.key === "Enter") {
+                generateQRCode();
+            }
+        }
+
+        function toggleScan() {
+            if (!scanningActive) {
+                startScan();
+            } else {
+                stopScan();
+            }
+        }
+
+        function startScan() {
+            scanButton.textContent = "Stop Scanning";
+            video.style.display = "block";
+            canvas.style.display = "none";
+            scannedImage.style.display = "none";
+            resultContainer.textContent = "";
+            scanningActive = true;
+            copyButton.disabled = true;
+            searchButton.disabled = true;
+
+            navigator.mediaDevices
+                .getUserMedia({
+                    video: { facingMode: "environment" },
+                })
+                .then(function (stream) {
+                    video.srcObject = stream;
+                    video.play();
+                    requestAnimationFrame(scan);
+                })
+                .catch(function (error) {
+                    console.error("Error accessing the camera: ", error);
+                    resultContainer.textContent = "Error accessing the camera";
+                    scanningActive = false;
+                });
+        }
+
+        function stopScan() {
+            scanButton.textContent = "Start Scanning";
+            video.style.display = "none";
+            canvas.style.display = "block";
+            scanningActive = false;
+
+            var stream = video.srcObject;
+            var tracks = stream.getTracks();
+            tracks.forEach(function (track) {
+                track.stop();
+            });
+
+            qrCodeInstance = null;
+        }
+
+        function scan() {
+            if (!scanningActive) return;
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas
+                    .getContext("2d")
+                    .drawImage(video, 0, 0, canvas.width, canvas.height);
+                var imageData = canvas
+                    .getContext("2d")
+                    .getImageData(0, 0, canvas.width, canvas.height);
+                var code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+                if (code) {
+                    stopScan();
+
+                    scannedImage.src = canvas.toDataURL();
+                    video.style.display = "none";
+                    canvas.style.display = "none";
+                    scannedImage.style.display = "block";
+
+                    resultContainer.textContent = code.data;
+                    copyButton.disabled = false;
+                    searchButton.disabled = false;
+
+                    // if (isValidURL(code.data)) {
+                    //     window.open(code.data, '_blank');
+                    // }
+
+                    qrCodeInstance = null;
+                } else {
+                    requestAnimationFrame(scan);
+                }
+            } else {
+                requestAnimationFrame(scan);
+            }
+        }
+
+        function isValidURL(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        function copyToClipboard() {
+            var result = document.getElementById("result").textContent;
+            navigator.clipboard
+                .writeText(result)
+                .then(function () {
+                    console.log("Text copied to clipboard");
+                    const successMessage = document.getElementById("successMessage");
+                    successMessage.textContent = "Text copied to clipboard";
+                    setTimeout(function () {
+                        successMessage.textContent = "";
+                    }, 2000);
+                })
+                .catch(function (error) {
+                    console.error("Error copying text to clipboard: ", error);
+                });
+        }
+
+        function searchOnGoogle() {
+            var result = document.getElementById("result").textContent;
+            if (isValidURL(result)) {
+                window.open(code.data, '_blank');
+                return;
+            }
+            var searchUrl =
+                "https://www.google.com/search?q=" + encodeURIComponent(result);
+            window.open(searchUrl, "_blank");
+        }
+        function generateQRCode() {
+            var inputText = document.getElementById("inputText").value;
+            var warningMessage = document.getElementById("warningMessage");
+            var qrcodeContainer = document.getElementById("qrcodeContainer");
+            var qrcode = document.getElementById("qrcode");
+            var qrcodeMessage = document.getElementById("qrcodeMessage");
+            var saveButton = document.getElementById("saveButton");
+            var shareButton = document.getElementById("shareButton");
+
+            var maxLength = 100;
+
+            if (inputText.length > maxLength) {
+                warningMessage.textContent = `Text is too long. Maximum length is ${maxLength} characters.`;
+                qrcodeContainer.style.display = "none";
+                qrcodeMessage.textContent = "";
+                saveButton.style.display = "none";
+                return;
+            }
+
+            warningMessage.textContent = "";
+            if (inputText) {
+                warningMessage.textContent = "";
+                qrcode.innerHTML = "";
+
+                qrCodeInstance = new QRCode(qrcode, {
+                    text: inputText,
+                    width: 128,
+                    height: 128,
+                });
+
+                qrcodeContainer.style.display = "block";
+                qrcodeMessage.textContent = "QR Code for: " + inputText;
+                saveButton.style.display = "inline-block";
+                shareButton.style.display = "inline-block";
+            } else {
+                qrcodeContainer.style.display = "none";
+                qrcodeMessage.textContent = "";
+                saveButton.style.display = "none";
+                shareButton.style.display = "none";
+            }
+        }
+
+        function saveQRCode() {
+            var qrcodeDataUrl = document
+                .getElementById("qrcode")
+                .querySelector("img").src;
+            var downloadLink = document.createElement("a");
+            downloadLink.href = qrcodeDataUrl;
+            downloadLink.download = `qrcode-${Date.now()}.png`;
+            downloadLink.click();
+        }
+
+        function shareQRCode() {
+            var qrcodeDataUrl = document
+                .getElementById("qrcode")
+                .querySelector("img").src;
+            if (navigator.share) {
+                navigator
+                    .share({
+                        title: "QR Code",
+                        text: "Check out this QR code",
+                        url: qrcodeDataUrl,
+                    })
+                    .then(() => console.log("Successful share"))
+                    .catch((error) => console.log("Error sharing:", error));
+            } else {
+                alert(
+                    "Web Share API is not supported in your browser. You can manually share the QR code by copying the image URL: " +
+                    qrcodeDataUrl
+                );
+            }
+        }
+    </script>
+</body>
+
+</html>
